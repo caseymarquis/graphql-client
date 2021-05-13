@@ -149,17 +149,27 @@ namespace GraphQL.Client.Http
 
             if (httpResponseMessage.IsSuccessStatusCode)
             {
-                var graphQLResponse = await JsonSerializer.DeserializeFromUtf8StreamAsync<TResponse>(contentStream, cancellationToken);
-                return graphQLResponse.ToGraphQLHttpResponse(httpResponseMessage.Headers, httpResponseMessage.StatusCode);
+                try
+                {
+                    var graphQLResponse = await JsonSerializer.DeserializeFromUtf8StreamAsync<TResponse>(contentStream, cancellationToken);
+                    return graphQLResponse.ToGraphQLHttpResponse(httpResponseMessage.Headers, httpResponseMessage.StatusCode);
+                }
+                catch (Exception ex)
+                {
+                    throw new AggregateException(ex, new GraphQLHttpRequestException(httpResponseMessage.StatusCode, httpResponseMessage.Headers, await getContentForError()));
+                }
             }
 
-            // error handling
-            string content = null;
-            if (contentStream != null)
-                using (var sr = new StreamReader(contentStream))
-                    content = await sr.ReadToEndAsync();
+            throw new GraphQLHttpRequestException(httpResponseMessage.StatusCode, httpResponseMessage.Headers, await getContentForError());
 
-            throw new GraphQLHttpRequestException(httpResponseMessage.StatusCode, httpResponseMessage.Headers, content);
+            async Task<string> getContentForError()
+            {
+                string content = null;
+                if (contentStream != null)
+                    using (var sr = new StreamReader(contentStream))
+                        content = await sr.ReadToEndAsync();
+                return content;
+            }
         }
 
         private GraphQLHttpWebSocket CreateGraphQLHttpWebSocket()
